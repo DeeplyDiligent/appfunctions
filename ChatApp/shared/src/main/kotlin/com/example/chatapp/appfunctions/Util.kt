@@ -15,7 +15,9 @@
  */
 package com.example.chatapp.appfunctions
 
+import androidx.appfunctions.AppFunctionResourceContainer
 import androidx.appfunctions.AppFunctionSerializable
+import androidx.appfunctions.AppFunctionTextResource
 
 /**
  * Represents a result from a contact or group search.
@@ -31,6 +33,19 @@ data class ContactSearchResult(
     /** The human-readable label/display name of the endpoint. */
     val endpointDisplayName: String,
 )
+
+/**
+ * Result of a message sending operation.
+ */
+@AppFunctionSerializable(isDescribedByKDoc = true)
+data class Result(
+    /** The unique identifier for the successfully sent message or endpoint. */
+    val messageId: String,
+    /** A human-readable status message confirming action details. */
+    val message: String,
+    /** Optional list of text resources. */
+    override val resources: List<AppFunctionTextResource> = emptyList(),
+) : AppFunctionResourceContainer
 
 /**
  * Represents an individual recipient or contact.

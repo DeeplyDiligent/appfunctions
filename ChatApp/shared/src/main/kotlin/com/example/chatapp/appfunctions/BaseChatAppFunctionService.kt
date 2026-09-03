@@ -26,6 +26,7 @@ import androidx.appfunctions.AppFunctionInvalidArgumentException
 import androidx.appfunctions.AppFunctionService
 import androidx.appfunctions.AppFunctionServiceEntryPoint
 import androidx.appfunctions.AppFunctionStringValueConstraint
+import androidx.appfunctions.AppFunctionTextResource
 import com.example.chatapp.data.CallManager
 import com.example.chatapp.data.DisplayMessage
 import com.example.chatapp.data.MessageRepository
@@ -34,6 +35,8 @@ import com.example.chatapp.data.WallpaperRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
+import org.json.JSONArray
+import org.json.JSONObject
 import javax.inject.Inject
 
 /**
@@ -103,6 +106,85 @@ abstract class BaseChatAppFunctionService : AppFunctionService() {
             )
         }
         return recipients
+    }
+
+    /**
+     * Fetch details for sending a message before execution.
+     * Required workflow: Call "searchContacts" first to obtain a valid endpointValue.
+     *
+     * @param endpointValue The unique identifier for the recipient or group obtained from searchContacts.
+     * @param messageBody The text content of the message to send. Cannot be empty or blank.
+     * @param imageUris Optional list of image URIs to attach to the message.
+     * @return A [Result] object containing confirmation details.
+     * @throws AppFunctionInvalidArgumentException If messageBody is empty or blank. If thrown, ask the user to provide the message content to send.
+     * @throws AppFunctionElementNotFoundException If no contact or group matches endpointValue. If thrown, call "searchContacts" to find the correct ID.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun fetchSendMessageDetails(
+        endpointValue: String,
+        messageBody: String,
+        imageUris: List<Uri>? = null,
+    ): Result {
+        if (messageBody.isBlank()) {
+            throw AppFunctionInvalidArgumentException("Message body cannot be empty")
+        }
+        val displayName =
+            recipientsRepository.getRecipientById(endpointValue)?.name
+                ?: recipientsRepository.getGroupById(endpointValue)?.name
+                ?: throw AppFunctionElementNotFoundException(
+                    "No contact or group found for endpointValue: $endpointValue",
+                )
+
+        val sentMessageId = endpointValue
+        val surfaceId = "surface_$sentMessageId"
+        val catalogId =
+            "https://developers.google.com/connected-apps/a2ui/v0_9/comms_catalog_preview.json"
+
+        val createSurface =
+            JSONObject().apply {
+                put(
+                    "createSurface",
+                    JSONObject().apply {
+                        put("surfaceId", surfaceId)
+                        put("catalogId", catalogId)
+                    },
+                )
+            }
+
+        val confirmationComponent =
+            JSONObject().apply {
+                put("component", "MessageConfirmationComponent")
+                put("id", "root")
+                put("contactDisplayName", displayName)
+                put("endpointDisplayName", "ChatApp")
+                put("messageBody", messageBody)
+                put("editMessageUri", "app://chatapp/edit/$sentMessageId")
+            }
+
+        val updateComponents =
+            JSONObject().apply {
+                put(
+                    "updateComponents",
+                    JSONObject().apply {
+                        put("surfaceId", surfaceId)
+                        put("components", JSONArray().put(confirmationComponent).toString())
+                    },
+                )
+            }
+
+        val a2uiJsonPayload =
+            JSONArray().apply {
+                put(createSurface)
+                put(updateComponents)
+            }.toString()
+
+        val a2uiResource =
+            AppFunctionTextResource(
+                mimeType = "application/a2ui+json",
+                content = a2uiJsonPayload,
+            )
+
+        return Result(sentMessageId, "Message sent.", listOf(a2uiResource))
     }
 
     /**
