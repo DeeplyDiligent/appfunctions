@@ -32,21 +32,29 @@ class CheckMainlineVersionUseCase
          */
         operator fun invoke(): Boolean {
             val pm = context.packageManager
-            return try {
-                val packageInfo =
-                    pm.getPackageInfo(
-                        APPSEARCH_MODULE_NAME,
-                        PackageManager.PackageInfoFlags.of(PackageManager.MATCH_APEX.toLong()),
-                    )
-                val versionCode = packageInfo.longVersionCode
-                versionCode > REQUIRED_VERSION
-            } catch (e: PackageManager.NameNotFoundException) {
-                false
+            for (moduleName in APPSEARCH_MODULE_NAMES) {
+                try {
+                    val packageInfo =
+                        pm.getPackageInfo(
+                            moduleName,
+                            PackageManager.PackageInfoFlags.of(PackageManager.MATCH_APEX.toLong()),
+                        )
+                    if (packageInfo.longVersionCode > REQUIRED_VERSION) {
+                        return true
+                    }
+                } catch (e: PackageManager.NameNotFoundException) {
+                    // Try next module name
+                }
             }
+            return false
         }
 
         companion object {
-            const val APPSEARCH_MODULE_NAME = "com.google.android.appsearch"
+            val APPSEARCH_MODULE_NAMES =
+                listOf(
+                    "com.google.android.appsearch",
+                    "com.android.appsearch",
+                )
             const val REQUIRED_VERSION = 360743060L
         }
     }
