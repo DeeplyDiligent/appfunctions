@@ -115,7 +115,7 @@ abstract class BaseChatAppFunctionService : AppFunctionService() {
      * @param endpointValue The unique identifier for the recipient or group obtained from searchContacts.
      * @param messageBody The text content of the message to send. Cannot be empty or blank.
      * @param imageUris Optional list of image URIs to attach to the message.
-     * @return A [Result] object containing confirmation details.
+     * @return A [ConfirmationPreview] object containing confirmation details.
      * @throws AppFunctionInvalidArgumentException If messageBody is empty or blank. If thrown, ask the user to provide the message content to send.
      * @throws AppFunctionElementNotFoundException If no contact or group matches endpointValue. If thrown, call "searchContacts" to find the correct ID.
      */
@@ -124,7 +124,7 @@ abstract class BaseChatAppFunctionService : AppFunctionService() {
         endpointValue: String,
         messageBody: String,
         imageUris: List<Uri>? = null,
-    ): Result {
+    ): ConfirmationPreview {
         if (messageBody.isBlank()) {
             throw AppFunctionInvalidArgumentException("Message body cannot be empty")
         }
@@ -135,8 +135,7 @@ abstract class BaseChatAppFunctionService : AppFunctionService() {
                     "No contact or group found for endpointValue: $endpointValue",
                 )
 
-        val sentMessageId = endpointValue
-        val surfaceId = "surface_$sentMessageId"
+        val surfaceId = "surface_$endpointValue"
         val catalogId =
             "https://developers.google.com/connected-apps/a2ui/v0_9/comms_catalog_preview.json"
 
@@ -158,7 +157,7 @@ abstract class BaseChatAppFunctionService : AppFunctionService() {
                 put("contactDisplayName", displayName)
                 put("endpointDisplayName", "ChatApp")
                 put("messageBody", messageBody)
-                put("editMessageUri", "app://chatapp/edit/$sentMessageId")
+                put("editMessageUri", "app://chatapp/edit/$endpointValue")
             }
 
         val updateComponents =
@@ -184,7 +183,7 @@ abstract class BaseChatAppFunctionService : AppFunctionService() {
                 content = a2uiJsonPayload,
             )
 
-        return Result(sentMessageId, "Message sent.", listOf(a2uiResource))
+        return ConfirmationPreview(resources = listOf(a2uiResource))
     }
 
     /**

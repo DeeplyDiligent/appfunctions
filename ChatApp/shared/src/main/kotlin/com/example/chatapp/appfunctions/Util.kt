@@ -35,16 +35,12 @@ data class ContactSearchResult(
 )
 
 /**
- * Result of a message sending operation.
+ * Confirmation-card content for Gemini.
  */
 @AppFunctionSerializable(isDescribedByKDoc = true)
-data class Result(
-    /** The unique identifier for the successfully sent message or endpoint. */
-    val messageId: String,
-    /** A human-readable status message confirming action details. */
-    val message: String,
-    /** Optional list of text resources. */
-    override val resources: List<AppFunctionTextResource> = emptyList(),
+data class ConfirmationPreview(
+    /** Exactly one A2UI resource (mimeType "application/a2ui+json"). */
+    override val resources: List<AppFunctionTextResource>,
 ) : AppFunctionResourceContainer
 
 /**
