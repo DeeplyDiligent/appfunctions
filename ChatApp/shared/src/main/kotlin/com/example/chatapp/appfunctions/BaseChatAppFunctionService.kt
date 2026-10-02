@@ -141,6 +141,7 @@ abstract class BaseChatAppFunctionService : AppFunctionService() {
 
         val createSurface =
             JSONObject().apply {
+                put("version", "v0.9")
                 put(
                     "createSurface",
                     JSONObject().apply {
@@ -157,11 +158,12 @@ abstract class BaseChatAppFunctionService : AppFunctionService() {
                 put("contactDisplayName", displayName)
                 put("endpointDisplayName", "ChatApp")
                 put("messageBody", messageBody)
-                put("editMessageUri", "app://chatapp/edit/$endpointValue")
+                put("editMessageUri", buildEditMessageUri(endpointValue, messageBody))
             }
 
         val updateComponents =
             JSONObject().apply {
+                put("version", "v0.9")
                 put(
                     "updateComponents",
                     JSONObject().apply {
@@ -334,6 +336,19 @@ abstract class BaseChatAppFunctionService : AppFunctionService() {
 
         return results
     }
+
+    private fun buildEditMessageUri(
+        endpointValue: String,
+        messageBody: String,
+    ): String =
+        Uri.Builder()
+            .scheme("app")
+            .authority("com.example.chatapp")
+            .appendPath("chat")
+            .appendPath(endpointValue)
+            .appendQueryParameter("draft", messageBody)
+            .build()
+            .toString()
 
     private fun getSenderDisplayName(
         message: DisplayMessage,
