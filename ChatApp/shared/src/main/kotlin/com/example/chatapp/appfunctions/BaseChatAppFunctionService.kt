@@ -26,6 +26,7 @@ import androidx.appfunctions.AppFunctionInvalidArgumentException
 import androidx.appfunctions.AppFunctionService
 import androidx.appfunctions.AppFunctionServiceEntryPoint
 import androidx.appfunctions.AppFunctionStringValueConstraint
+import androidx.appfunctions.AppFunctionTextResource
 import com.example.chatapp.data.CallManager
 import com.example.chatapp.data.DisplayMessage
 import com.example.chatapp.data.MessageRepository
@@ -34,6 +35,8 @@ import com.example.chatapp.data.WallpaperRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
+import org.json.JSONArray
+import org.json.JSONObject
 import javax.inject.Inject
 
 /**
@@ -103,6 +106,86 @@ abstract class BaseChatAppFunctionService : AppFunctionService() {
             )
         }
         return recipients
+    }
+
+    /**
+     * Fetch details for sending a message before execution.
+     * Required workflow: Call "searchContacts" first to obtain a valid endpointValue.
+     *
+     * @param endpointValue The unique identifier for the recipient or group obtained from searchContacts.
+     * @param messageBody The text content of the message to send. Cannot be empty or blank.
+     * @param imageUris Optional list of image URIs to attach to the message.
+     * @return A [ConfirmationPreview] object containing confirmation details.
+     * @throws AppFunctionInvalidArgumentException If messageBody is empty or blank. If thrown, ask the user to provide the message content to send.
+     * @throws AppFunctionElementNotFoundException If no contact or group matches endpointValue. If thrown, call "searchContacts" to find the correct ID.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun fetchSendMessageDetails(
+        endpointValue: String,
+        messageBody: String,
+        imageUris: List<Uri>? = null,
+    ): ConfirmationPreview {
+        if (messageBody.isBlank()) {
+            throw AppFunctionInvalidArgumentException("Message body cannot be empty")
+        }
+        val displayName =
+            recipientsRepository.getRecipientById(endpointValue)?.name
+                ?: recipientsRepository.getGroupById(endpointValue)?.name
+                ?: throw AppFunctionElementNotFoundException(
+                    "No contact or group found for endpointValue: $endpointValue",
+                )
+
+        val surfaceId = "surface_$endpointValue"
+        val catalogId =
+            "https://developers.google.com/connected-apps/a2ui/v0_9/comms_catalog_preview.json"
+
+        val createSurface =
+            JSONObject().apply {
+                put("version", "v0.9")
+                put(
+                    "createSurface",
+                    JSONObject().apply {
+                        put("surfaceId", surfaceId)
+                        put("catalogId", catalogId)
+                    },
+                )
+            }
+
+        val confirmationComponent =
+            JSONObject().apply {
+                put("component", "MessageConfirmationComponent")
+                put("id", "root")
+                put("contactDisplayName", displayName)
+                put("endpointDisplayName", "ChatApp")
+                put("messageBody", messageBody)
+                put("editMessageUri", buildEditMessageUri(endpointValue, messageBody))
+            }
+
+        val updateComponents =
+            JSONObject().apply {
+                put("version", "v0.9")
+                put(
+                    "updateComponents",
+                    JSONObject().apply {
+                        put("surfaceId", surfaceId)
+                        put("components", JSONArray().put(confirmationComponent).toString())
+                    },
+                )
+            }
+
+        val a2uiJsonPayload =
+            JSONArray().apply {
+                put(createSurface)
+                put(updateComponents)
+            }.toString()
+
+        val a2uiResource =
+            AppFunctionTextResource(
+                mimeType = "application/a2ui+json",
+                content = a2uiJsonPayload,
+            )
+
+        return ConfirmationPreview(resources = listOf(a2uiResource))
     }
 
     /**
@@ -253,6 +336,19 @@ abstract class BaseChatAppFunctionService : AppFunctionService() {
 
         return results
     }
+
+    private fun buildEditMessageUri(
+        endpointValue: String,
+        messageBody: String,
+    ): String =
+        Uri.Builder()
+            .scheme("app")
+            .authority("com.example.chatapp")
+            .appendPath("chat")
+            .appendPath(endpointValue)
+            .appendQueryParameter("draft", messageBody)
+            .build()
+            .toString()
 
     private fun getSenderDisplayName(
         message: DisplayMessage,

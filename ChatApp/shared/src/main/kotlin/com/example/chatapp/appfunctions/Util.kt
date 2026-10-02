@@ -15,7 +15,9 @@
  */
 package com.example.chatapp.appfunctions
 
+import androidx.appfunctions.AppFunctionResourceContainer
 import androidx.appfunctions.AppFunctionSerializable
+import androidx.appfunctions.AppFunctionTextResource
 
 /**
  * Represents a result from a contact or group search.
@@ -31,6 +33,15 @@ data class ContactSearchResult(
     /** The human-readable label/display name of the endpoint. */
     val endpointDisplayName: String,
 )
+
+/**
+ * Confirmation-card content for Gemini.
+ */
+@AppFunctionSerializable(isDescribedByKDoc = true)
+data class ConfirmationPreview(
+    /** Exactly one A2UI resource (mimeType "application/a2ui+json"). */
+    override val resources: List<AppFunctionTextResource>,
+) : AppFunctionResourceContainer
 
 /**
  * Represents an individual recipient or contact.
