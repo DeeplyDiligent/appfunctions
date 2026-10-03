@@ -16,6 +16,46 @@ This sample is a chat application built with [Jetpack Compose](https://developer
 2. Open the project in Android Studio.
 3. Build and run the app on an emulator or device.
 
+## Development APK releases
+
+The **ChatApp dev release** workflow builds the phone `:app` module on pushes to
+`main` that change ChatApp or its release workflow. It can also be run manually
+from GitHub Actions on `main`. It runs the phone dev unit tests, signs the APK,
+and publishes a GitHub prerelease with:
+
+- `chatapp-dev.apk`
+- `chatapp-dev-cert.pem` and `chatapp-dev-cert.der`, the public signing certificate
+- `signing-certificate.txt`, the verified APK signer fingerprints
+- `SHA256SUMS`, checksums of the downloads
+
+Install the APK directly after allowing installs from your browser or file manager,
+or use `adb install -r chatapp-dev.apk`. You do **not** need to install the
+certificate. Do not add it to Android's trusted CA store. Android verifies the
+signature embedded in the APK itself.
+
+The dev build is debuggable and uses package `com.example.chatapp.dev`, so it can
+coexist with the original sample. It requires Android 7.0 / API 24 or newer;
+AppFunctions availability depends on your Android version and system services.
+Use `com.example.chatapp.dev` instead of `com.example.chatapp` in the adb examples
+below when testing a dev build. The fully qualified function names stay unchanged.
+
+### Signing setup for maintainers
+
+The workflow needs two repository Actions secrets:
+
+- `CHATAPP_DEV_KEYSTORE_BASE64`: a base64-encoded PKCS12 keystore with alias `chatapp-dev`.
+- `CHATAPP_DEV_KEYSTORE_PASSWORD`: its store and key password.
+
+Generate a dedicated development key once, upload it using `gh secret set`, and
+keep a secure backup outside the repository. Reuse the same key for future builds.
+Replacing it requires uninstalling the old app, which removes its local data.
+Never commit or publish the keystore or its password. Only the public certificate
+is included in releases. Signing secrets are not used in pull-request workflows.
+
+For a local unsigned dev build, run `./gradlew :app:assembleDev` from `ChatApp`.
+CI sets `-PdevVersionCode` to its increasing workflow run number so newer builds
+can update existing installations. Reruns share the same version code.
+
 ## AppFunctions
 
 This sample demonstrates how to define and provide the following AppFunctions in `AppFunctions.kt`:

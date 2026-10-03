@@ -28,13 +28,20 @@ android {
         applicationId = "com.example.chatapp"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
+        versionCode = providers.gradleProperty("devVersionCode").orElse("1").get().toInt()
         versionName = "1.0"
 
         testInstrumentationRunner = "com.example.chatapp.HiltTestRunner"
     }
 
     buildTypes {
+        create("dev") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            signingConfig = null // CI signs with the persistent dev key after building.
+            matchingFallbacks += listOf("debug")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

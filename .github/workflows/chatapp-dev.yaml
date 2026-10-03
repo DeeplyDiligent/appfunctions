@@ -1,0 +1,138 @@
+name: ChatApp dev release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ChatApp/**'
+      - '.github/workflows/chatapp-dev.yaml'
+      - '.github/ci-gradle.properties'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chatapp-dev-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Never expose signing secrets to pull requests or publish another branch.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: zulu
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+      - name: Configure Gradle
+        run: |
+          mkdir -p ~/.gradle
+          cp .github/ci-gradle.properties ~/.gradle/gradle.properties
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-37' 'build-tools;37.0.0'
+      - name: Test and build phone dev APK
+        working-directory: ChatApp
+        run: |
+          ./gradlew :app:testDevUnitTest :app:assembleDev \
+            -PdevVersionCode="$GITHUB_RUN_NUMBER" --stacktrace
+      - name: Sign APK and export public certificate
+        env:
+          DEV_KEYSTORE_BASE64: ${{ secrets.CHATAPP_DEV_KEYSTORE_BASE64 }}
+          DEV_KEYSTORE_PASSWORD: ${{ secrets.CHATAPP_DEV_KEYSTORE_PASSWORD }}
+          DEV_KEY_ALIAS: chatapp-dev
+        run: |
+          set -euo pipefail
+          : "${DEV_KEYSTORE_BASE64:?Set CHATAPP_DEV_KEYSTORE_BASE64}"
+          : "${DEV_KEYSTORE_PASSWORD:?Set CHATAPP_DEV_KEYSTORE_PASSWORD}"
+          umask 077
+          KEYSTORE="$RUNNER_TEMP/chatapp-dev.p12"
+          trap 'rm -f "$KEYSTORE"' EXIT
+          printf '%s' "$DEV_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          mkdir -p dist
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/37.0.0"
+          "$BUILD_TOOLS/zipalign" -P 16 -f 4 \
+            ChatApp/app/build/outputs/apk/dev/app-dev-unsigned.apk \
+            "$RUNNER_TEMP/chatapp-dev-aligned.apk"
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$KEYSTORE" --ks-key-alias "$DEV_KEY_ALIAS" \
+            --ks-pass env:DEV_KEYSTORE_PASSWORD --key-pass env:DEV_KEYSTORE_PASSWORD \
+            --out dist/chatapp-dev.apk "$RUNNER_TEMP/chatapp-dev-aligned.apk"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs dist/chatapp-dev.apk \
+            | tee dist/signing-certificate.txt
+          keytool -exportcert -rfc -keystore "$KEYSTORE" -storetype PKCS12 \
+            -storepass:env DEV_KEYSTORE_PASSWORD -alias "$DEV_KEY_ALIAS" \
+            -file dist/chatapp-dev-cert.pem
+          keytool -exportcert -keystore "$KEYSTORE" -storetype PKCS12 \
+            -storepass:env DEV_KEYSTORE_PASSWORD -alias "$DEV_KEY_ALIAS" \
+            -file dist/chatapp-dev-cert.der
+          # Do not distribute the optional v4 sidecar or any private key material.
+          rm -f dist/*.idsig
+          (cd dist && sha256sum chatapp-dev.apk chatapp-dev-cert.pem chatapp-dev-cert.der signing-certificate.txt > SHA256SUMS)
+          {
+            echo '## ChatApp dev APK'
+            echo 'Package: `com.example.chatapp.dev`. This is a debuggable development build.'
+            echo 'Download the APK from the release, allow installation from your browser, then open it.'
+            echo 'The public certificate is for verification, not installation as an Android CA.'
+            echo 'For USB installation: `adb install -r chatapp-dev.apk`.'
+            echo
+            echo '### Signing verification'
+            echo '```text'
+            cat dist/signing-certificate.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload signed APK and public certificate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: chatapp-dev-${{ github.run_number }}-${{ github.run_attempt }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: chatapp-dev-${{ github.run_number }}-${{ github.run_attempt }}
+          path: dist
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: chatapp-dev-${{ github.run_number }}-${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Phone ChatApp development build from commit $COMMIT_SHA.
+
+          Install **chatapp-dev.apk**, not the certificate. Android may ask you to allow installs from your browser or file manager.
+
+          Package: \`com.example.chatapp.dev\`. Minimum Android: 7.0 / API 24. AppFunctions support depends on the Android version and system services on your device.
+
+          This build is debuggable and is not intended for production. It uses a persistent dev signing key so later builds can update it without uninstalling.
+
+          USB installation: \`adb install -r chatapp-dev.apk\`.
+
+          Public signing certificates are attached in PEM and DER formats. Do not install them as trusted CA certificates. See signing-certificate.txt for the APK signer fingerprint and SHA256SUMS for download checksums.
+          EOF
+          gh release create "$RELEASE_TAG" dist/* \
+            --repo "$GH_REPO" --target "$COMMIT_SHA" \
+            --title "ChatApp dev $RELEASE_TAG" \
+            --prerelease --latest=false --notes-file "$RUNNER_TEMP/release-notes.md"
+          echo "Release: https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
