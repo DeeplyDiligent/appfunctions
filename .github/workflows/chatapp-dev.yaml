@@ -44,7 +44,7 @@ jobs:
       - name: Test and build phone dev APK
         working-directory: ChatApp
         run: |
-          ./gradlew :app:testDevUnitTest :app:assembleDev \
+          ./gradlew :app:testDebugUnitTest :app:assembleDev \
             -PdevVersionCode="$GITHUB_RUN_NUMBER" --stacktrace
       - name: Sign APK and export public certificate
         env:

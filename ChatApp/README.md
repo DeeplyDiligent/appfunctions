@@ -20,7 +20,7 @@ This sample is a chat application built with [Jetpack Compose](https://developer
 
 The **ChatApp dev release** workflow builds the phone `:app` module on pushes to
 `main` that change ChatApp or its release workflow. It can also be run manually
-from GitHub Actions on `main`. It runs the phone dev unit tests, signs the APK,
+from GitHub Actions on `main`. It runs the phone debug unit tests, signs the dev APK,
 and publishes a GitHub prerelease with:
 
 - `chatapp-dev.apk`
